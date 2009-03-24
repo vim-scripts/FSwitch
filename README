@@ -1,0 +1,29 @@
+This is a mirror of http://www.vim.org/scripts/script.php?script_id=2590
+
+This script is designed to switch between companion files much like vimscript #31 (a.vim).
+
+Out of the box it will support C and C++ for most usages, unless you've got an interesting setup I haven't guessed.
+
+You can:
+
+  - switch the file and keep it in the current window with :FSHere
+
+  - switch the file and put it in the window to the left with :FSLeft
+  - switch the file, split the window to the left and put it there with :FSSwitchLeft
+
+  - the same can be done with Right, Above and Below.
+
+The switch function should be easy enough to call in different ways that give you more exotic behaviour.
+
+Using the location directive, you can be quite specific about how the companion file is resolved and, more importantly how it's created when it doesn't exist.  This latter bit was apparently a sore point with a.vim and I hope that it's acceptable in FSwitch.
+
+You can state locations as being the result of
+
+- a regular expression substitution
+- a globbed match
+- a relative path (either unconditionally or only if the current buffer's path matches a required pattern)
+- an absolute path (either unconditionally or only if the current buffer's path matches a required pattern)
+
+Using an autocmd to set the buffer-local variables allows you great flexibility in specializing the behaviour of FSwitch.
+
+There are also a couple of public functions you can use to retrieve the companion file for use in your own functions as well.
