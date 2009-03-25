@@ -20,12 +20,16 @@ Copyright: The VIM LICENSE applies to fswitch.vim, and fswitch.txt
 	2. About ................................: |fswitch-about|
 	3. Features .............................: |fswitch-features|
 	4. Setup ................................: |fswitch-setup|
-	5. Configuration ........................: |fswitch-altcreate|
+	5. Configuration ........................: |fswitch-configure|
 	6. "Creating" the Alternate File ........: |fswitch-altcreate|
 	7. Useful Mappings ......................: |fswitch-mappings|
-	8. The FSwitch Function .................: |fswitch-function|
-	9. The Default Settings .................: |fswitch-defaults|
-       10. Examples .............................: |fswitch-examples|
+	8. FSwitch() ............................: |fswitch-function|
+	9. FSReturnCompanionFilenameString().....: |fswitch-getcompanion|
+       10. FSReturnReadableCompanionFilename()...: |fswitch-getreadablecomp|
+       11. The Default Settings .................: |fswitch-defaults|
+       12. Examples .............................: |fswitch-examples|
+       13. Troubleshooting ......................: |fswitch-trouble|
+        A. Change History .......................: |fswitch-changes|
 
 ==============================================================================
 							*fswitch-about*
@@ -52,6 +56,8 @@ FSwitch has the following features:
   - Switches between a file and its companion file
   - Ability to create a new file using a preferential location
   - Simple configuration using buffer-local variables
+  - It's got a really long doc file (... seriously, why is this thing so
+    bloody long?)
   - Umm... other stuff?
 
 ==============================================================================
@@ -118,6 +124,7 @@ get that move on to |fswitch-configure|.
 <
 	The following types of directives are understood:
 
+							 *fswitch_reg*
 	reg:~
 		A regular expression.  The regular expression takes the form:
 >
@@ -133,15 +140,61 @@ get that move on to |fswitch-configure|.
 		{globsub} is a substitution string that will be run through
        		          the |glob()| function.
 
+							 *fswitch_rel*
 	rel:~
 		A relative path.  The {rel:} is actually optional.  If you
 		leave this off, then FSwitch will assume that the string is
 		denoting a relative path.
 	
+							 *fswitch_ifrel*
+	ifrel:~
+		Takes the same form as {:reg} but the {globsub} part of the
+		directive is a relative path.  The relative path is only used
+		if the {pat} matches the existing path of the buffer.
+	
+							 *fswitch_abs*
 	abs:~
 		An absolute path.  I have no idea why you'd ever want to do
 		this, but it's there if you want it.
 
+							 *fswitch_ifabs*
+	ifabs:~
+		Takes the same form as {:reg} but the {globsub} part of the
+		directive is an absolute path.  The absolute path is only used
+		if the {pat} matches the existing path of the buffer.
+	
+	Why use the "if" variants?
+
+	Here's the situation: You've got the following file:
+>
+		~/code/MyFile.h
+<
+	And you've set the following locations:
+>
+		For .h   -> reg:/include/src/,../src,./
+		For .cpp -> reg:/src/include/,../include,./
+<
+	Here's what happens when run the following commands:
+>
+		FSwitch('%')
+		# Creates a new file ~/src/MyFile.cpp due to the first
+		# relative path in the list for .h
+		FSwitch('%')
+		# Creates a new file ~/include/MyFile.h due to the first
+		# regular expression in the list for .cpp
+<
+	The problem is that you've unconditionally said you want to use
+	{../src} for the alternate file but in reality you probably wanted to
+	use {./}.  If you use {:ifrel} instead then you can say that you only
+	want to use {../src} if the path to the current buffer contains
+	{/include/} or something like that.  If you did this FSwitch would not
+	have taken {../src} for the new file but would have chosen {./}
+
+	So the "right" setup is:
+>
+		For .h   -> reg:/include/src/,ifrel:|/include/|../src|,./
+		For .cpp -> reg:/src/include/,ifrel:|/src/|../include|,./
+<
 							*'fswitchdisablegloc'*
 'fsdisablegloc'
 		string	(default off)
@@ -211,8 +264,8 @@ multiple possibilities here, FSwitch prefers the first possible match.  For
 example if the current buffer has a filename called {/code/src/a/b/MyFile.cpp}
 and has the following set:
 >
-		let b:fswitchdst = 'h,hpp'
-		let b:fswitchlocs = 'reg:/src/include/,../include,../inc'
+	let b:fswitchdst = 'h,hpp'
+	let b:fswitchlocs = 'reg:/src/include/,../include,../inc'
 <
 then the created filename will be {/code/include/a/b/MyFile.cpp}.
 
@@ -222,10 +275,9 @@ write the buffer very easily if the directory hierarchy doesn't yet exist.  In
 this case, it's quite helpful to define a mapping for easily creating the
 directory for you:
 >
-		nmap <Leader>md :!mkdir -p %:p:h<cr>
+	nmap <Leader>md :!mkdir -p %:p:h<cr>
 <
 Then it's pretty easy to create the directory before writing the file.
-
 
 ==============================================================================
 							*fswitch-mappings*
@@ -263,8 +315,8 @@ mappings myself:
 	nmap <silent> <Leader>oJ :FSSplitBelow<cr>
 <
 ==============================================================================
-							*fswitch-function*
-8. The FSwitch Function~
+							*FSwitch()*
+8. FSwitch()~
 
 The main work is done by the FSwitch() function.  The reason it's documented
 here is because you can use it to do something more interesting if you wish.
@@ -278,8 +330,39 @@ in the second argument.  If this string is non-empty then it will be run
 through an |:execute| call.
 
 ==============================================================================
+		     *fswitch-getcompanion* *FSReturnCompanionFilenameString()*
+
+9. FSReturnCompanionFilenameString()~
+
+This function is used by |FSwitch()| to return the pathname to the preferred
+companion file.  In this case, the file need not actually exist on the
+filesystem but would be the one created if you chose to do so.  As an
+example:
+>
+    let path = FSReturnCompanionFilenameString('%')
+<
+The resultant path string contains the preferred companion file or nothing if
+no preferred file could be discovered.
+
+==============================================================================
+		*fswitch-getreadablecomp* *FSReturnReadableCompanionFilename()*
+
+10. FSReturnReadableCompanionFilename()~
+
+This function returns the companion file, but the companion file must be
+readable on the filesystem for it to be successfully returned.
+>
+    let path = FSReturnReadableCompanionFilename('%')
+<
+The resultant path string contains the preferred companion file or nothing if
+no preferred file could be found on the filesystem.
+
+In order to see what created the need for this function, see
+|fswitch-example3|.
+
+==============================================================================
 							*fswitch-defaults*
-9. The Default Settings~
+11. The Default Settings~
 
 By default FSwitch handles {c} and {cpp} files, favouring {cpp}.
 
@@ -302,8 +385,7 @@ For *.cpp
 
 ==============================================================================
 							*fswitch-examples*
-10. Examples~
-
+12. Examples~
 							*fswitch-example1*
 Let's say you have a C++ codebase and it has the following properties (this
 level of insanity is a bit high but versions that are only slightly saner
@@ -375,5 +457,69 @@ following:
 >
 then if you have the a file {src/MyFile.cpp} then this will find the file
 {include/name/space/MyFile.h}.
+
+							*fswitch-example3*
+At work I'm a Windows C++ programmer and at home I'm a OS X Objective-C
+programmer.  There's a problem with this... C++ and Objective-C both use the
+same extension for header files ({.h}).
+
+At home I want to be able to use the XCode command line builder in the
+'makeprg' setting when I'm working on the code.  I would like this to be set
+when I am on a {.m} file or its companion {.h} file.  This is done with the
+following function:
+>
+    function! SetMakeForXCode(filename)
+        let isObjCFile = 0
+        let ext = expand(a:filename . ":e")
+        if ext == 'm' || ext == 'mm'
+            let isObjCFile = 1
+        elseif ext == 'h'
+	    " Find the companion file
+            let companionfile = FSReturnReadableCompanionFilename('%')
+            " For some reason expand() doesn't work on the next line
+            let companionext = substitute(companionfile, '.*\.', '', '')
+            if companionext == 'm' || companionext == 'mm'
+                let isObjCFile = 1
+            endif
+        endif
+        if isObjCFile == 1
+            setl makeprg=xcodebuild\ -configuration\ Debug
+        endif
+    endfunction
+<
+Yup, this could have been easier by using the 'filetype' or using some sort of
+|grep| call but I wanted to use this particular hammer. :)  I'll probably end
+up switching it to use the 'filetype' instead in the end...
+
+==============================================================================
+							*fswitch-trouble*
+13. TroubleShooting~
+							*fswitch-empty*
+You may get the following error:
+>
+  Alternate has evaluated to nothing.  See :h fswitch-empty for more info.
+<
+It can happen... This is probably due to the fact that you've got a nicely
+strict set of rules for your locations.  With |fswitch-reg| and
+|fswitch-ifrel| and |fswitch-ifabs| you can get rather specific about whether
+or not anything actually happens.  If you aren't letting anything really
+happen, it's not going to happen and you're going to end up with an empty
+path.
+
+==============================================================================
+							*fswitch-changes*
+A. Change History~
+
+0.9.1
+	- Added :ifrel (|fswitch_ifrel|)
+	- Added :ifabs (|fswitch_ifabs|)
+	- Added |FSReturnReadableCompanionFilename()|
+	- Added |FSReturnCompanionFilenameString()|
+	- Changed default settings for .h to use :ifrel instead of :rel
+	- Changed default settings for .c and .cpp to use :ifrel instead of
+	  :rel
+
+0.9.0
+	- Initial release
 
 vim:tw=78:sts=8:ts=8:sw=8:noet:ft=help:

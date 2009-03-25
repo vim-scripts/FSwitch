@@ -20,60 +20,13 @@ if exists("g:disable_fswitch")
 endif
 
 " Version
-let s:fswitch_version = '0.9.0'
+let s:fswitch_version = '0.9.1'
 
 " Get the path separator right
 let s:os_slash = &ssl == 0 && (has("win16") || has("win32") || has("win64")) ? '\' : '/'
 
 " Default locations - appended to buffer locations unless otherwise specified
 let s:fswitch_global_locs = '.' . s:os_slash
-
-"
-" s:FSGetAlternateFilename
-"
-" Takes the path, name and extension of the file in the current buffer and
-" applies the location to it.  If the location is a regular expression pattern
-" then it will split that up and apply it accordingly.  If the location pattern
-" is actually an explicit relative path or an implicit one (default) then it
-" will simply apply that to the file directly.
-"
-function! s:FSGetAlternateFilename(filepath, filename, newextension, location, mustmatch)
-    let parts = split(a:location, ':')
-    if len(parts) == 2 && parts[0] == 'reg'
-        if strlen(parts[1]) < 3
-            throw 'Bad substitution pattern "' . a:location . '".'
-        else
-            let resep = strpart(parts[1], 0, 1)
-            let regex = split(strpart(parts[1], 1), resep)
-            if len(regex) < 2 || len(regex) > 3
-                throw 'Bad substitution pattern "' . a:location . '".'
-            else
-                let pat = regex[0]
-                let sub = regex[1]
-                let flags = ''
-                if len(regex) == 3
-                    let flags = regex[2]
-                endif
-                if a:mustmatch == 1 && match(a:filepath, pat) == -1
-                    let path = ""
-                else
-                    let path = substitute(a:filepath, pat, sub, flags) . s:os_slash .
-                                \ a:filename . '.' . a:newextension
-                endif
-            endif
-        endif
-    elseif len(parts) == 2 && parts[0] == 'rel'
-        let path = a:filepath . s:os_slash . parts[1] . 
-                      \ s:os_slash . a:filename . '.' . a:newextension
-    elseif len(parts) == 2 && parts[0] == 'abs'
-        let path = parts[1] . s:os_slash . a:filename . '.' . a:newextension
-    elseif len(parts) == 1 " This is the default relative path
-        let path = a:filepath . s:os_slash . a:location . 
-                      \ s:os_slash . a:filename . '.' . a:newextension
-    endif
-
-    return simplify(path)
-endfunction
 
 "
 " s:SetVariables
@@ -94,19 +47,11 @@ function! s:SetVariables(dst, locs)
 endfunction
 
 "
-" FSwitch
+" s:FSGetLocations
 "
-" This is the only externally accessible function and is what we use to switch
-" to the alternate file.
+" Return the list of possible locations
 "
-function! FSwitch(filename, precmd)
-    let fullpath = expand(a:filename . ':p:h')
-    let ext = expand(a:filename . ':e')
-    let justfile = expand(a:filename . ':t:r')
-    if !exists("b:fswitchdst")
-        throw 'b:fswitchdst not set - read :help fswitch'
-    endif
-    let extensions = split(b:fswitchdst, ',')
+function! s:FSGetLocations()
     let locations = []
     if exists("b:fswitchlocs")
         let locations = split(b:fswitchlocs, ',')
@@ -114,36 +59,200 @@ function! FSwitch(filename, precmd)
     if !exists("b:fsdisablegloc") || b:fsdisablegloc == 0
         let locations += split(s:fswitch_global_locs, ',')
     endif
-    if len(locations) == 0
-        throw "There are no locations defined (see :h fswitchlocs and :h fsdisablegloc)"
-    endif
+
+    return locations
+endfunction
+
+"
+" s:FSGetExtensions
+"
+" Return the list of destination extensions
+"
+function! s:FSGetExtensions()
+    return split(b:fswitchdst, ',')
+endfunction
+
+"
+" s:FSGetMustMatch
+"
+" Return a boolean on whether or not the regex must match
+"
+function! s:FSGetMustMatch()
     let mustmatch = 1
     if exists("b:fsneednomatch") && b:fsneednomatch != 0
         let mustmatch = 0
     endif
+
+    return mustmatch
+endfunction
+
+"
+" s:FSGetFullPathToDirectory
+"
+" Given the filename, return the fully qualified directory portion
+"
+function! s:FSGetFullPathToDirectory(filename)
+    return expand(a:filename . ':p:h')
+endfunction
+
+"
+" s:FSGetFileExtension
+"
+" Given the filename, returns the extension
+"
+function! s:FSGetFileExtension(filename)
+    return expand(a:filename . ':e')
+endfunction
+
+"
+" s:FSGetFileNameWithoutExtension
+"
+" Given the filename, returns just the file name without the path or extension
+"
+function! s:FSGetFileNameWithoutExtension(filename)
+    return expand(a:filename . ':t:r')
+endfunction
+
+"
+" s:FSGetAlternateFilename
+"
+" Takes the path, name and extension of the file in the current buffer and
+" applies the location to it.  If the location is a regular expression pattern
+" then it will split that up and apply it accordingly.  If the location pattern
+" is actually an explicit relative path or an implicit one (default) then it
+" will simply apply that to the file directly.
+"
+function! s:FSGetAlternateFilename(filepath, filename, newextension, location, mustmatch)
+    let parts = split(a:location, ':')
+    let cmd = 'rel'
+    let directive = parts[0]
+    if len(parts) == 2
+        let cmd = parts[0]
+        let directive = parts[1]
+    endif
+    if cmd == 'reg' || cmd == 'ifrel' || cmd == 'ifabs'
+        if strlen(directive) < 3
+            throw 'Bad directive "' . a:location . '".'
+        else
+            let separator = strpart(directive, 0, 1)
+            let dirparts = split(strpart(directive, 1), separator)
+            if len(dirparts) < 2 || len(dirparts) > 3
+                throw 'Bad directive "' . a:location . '".'
+            else
+                let part1 = dirparts[0]
+                let part2 = dirparts[1]
+                let flags = ''
+                if len(dirparts) == 3
+                    let flags = dirparts[2]
+                endif
+                if cmd == 'reg'
+                    if a:mustmatch == 1 && match(a:filepath, part1) == -1
+                        let path = ""
+                    else
+                        let path = substitute(a:filepath, part1, part2, flags) . s:os_slash .
+                                    \ a:filename . '.' . a:newextension
+                    endif
+                elseif cmd == 'ifrel'
+                    if match(a:filepath, part1) == -1
+                        let path = ""
+                    else
+                        let path = a:filepath . s:os_slash . part2 . 
+                                     \ s:os_slash . a:filename . '.' . a:newextension
+                    endif
+                elseif cmd == 'ifabs'
+                    if match(a:filepath, part1) == -1
+                        let path = ""
+                    else
+                        let path = part2 . s:os_slash . a:filename . '.' . a:newextension
+                    endif
+                endif
+            endif
+        endif
+    elseif cmd == 'rel'
+        let path = a:filepath . s:os_slash . directive . s:os_slash . a:filename . '.' . a:newextension
+    elseif cmd == 'abs'
+        let path = directive . s:os_slash . a:filename . '.' . a:newextension
+    endif
+
+    return simplify(path)
+endfunction
+
+"
+" s:FSReturnCompanionFilename
+"
+" This function will return a path that is the best candidate for the companion
+" file to switch to.  If mustBeReadable == 1 when then the companion file will
+" only be returned if it is readable on the filesystem, otherwise it will be
+" returned so long as it is non-empty.
+"
+function! s:FSReturnCompanionFilename(filename, mustBeReadable)
+    let fullpath = s:FSGetFullPathToDirectory(a:filename)
+    let ext = s:FSGetFileExtension(a:filename)
+    let justfile = s:FSGetFileNameWithoutExtension(a:filename)
+    let extensions = s:FSGetExtensions()
+    let locations = s:FSGetLocations()
+    let mustmatch = s:FSGetMustMatch()
     let newpath = ''
-    let firstNonEmptyPath = ''
     for currentExt in extensions
         for loc in locations
             let newpath = s:FSGetAlternateFilename(fullpath, justfile, currentExt, loc, mustmatch)
-            if newpath != '' && firstNonEmptyPath == ''
-                let firstNonEmptyPath = newpath
-            endif
-            let newpath = glob(newpath)
-            if filereadable(newpath)
-                break
+            if a:mustBeReadable == 0 && newpath != ''
+                return newpath
+            elseif a:mustBeReadable == 1
+                let newpath = glob(newpath)
+                if filereadable(newpath)
+                    return newpath
+                endif
             endif
         endfor
-        if filereadable(newpath)
-            break
-        endif
     endfor
+
+    return newpath
+endfunction
+
+"
+" FSReturnReadableCompanionFilename
+"
+" This function will return a path that is the best candidate for the companion
+" file to switch to, so long as that file actually exists on the filesystem and
+" is readable.
+" 
+function! FSReturnReadableCompanionFilename(filename)
+    return s:FSReturnCompanionFilename(a:filename, 1)
+endfunction
+
+"
+" FSReturnCompanionFilenameString
+"
+" This function will return a path that is the best candidate for the companion
+" file to switch to.  The file does not need to actually exist on the
+" filesystem in order to qualify as a proper companion.
+"
+function! FSReturnCompanionFilenameString(filename)
+    return s:FSReturnCompanionFilename(a:filename, 0)
+endfunction
+
+"
+" FSwitch
+"
+" This is the only externally accessible function and is what we use to switch
+" to the alternate file.
+"
+function! FSwitch(filename, precmd)
+    if !exists("b:fswitchdst") || strlen(b:fswitchdst) == 0
+        throw 'b:fswitchdst not set - read :help fswitch'
+    endif
+    if (!exists("b:fswitchlocs")   || strlen(b:fswitchlocs) == 0) &&
+     \ (!exists("b:fsdisablegloc") || b:fsdisablegloc == 0)
+        throw "There are no locations defined (see :h fswitchlocs and :h fsdisablegloc)"
+    endif
+    let newpath = FSReturnReadableCompanionFilename(a:filename)
     let openfile = 1
     if !filereadable(newpath)
         if exists("b:fsnonewfiles") || exists("g:fsnonewfiles")
             let openfile = 0
         else
-            let newpath = firstNonEmptyPath
+            let newpath = FSReturnCompanionFilenameString(a:filename)
         endif
     endif
     if openfile == 1
@@ -165,9 +274,8 @@ endfunction
 "
 augroup fswitch_au_group
     au!
-    au BufEnter,BufWinEnter *.h call s:SetVariables('cpp,c', 'reg:/include/src/,reg:/include.*/src/,../src')
-    au BufEnter,BufWinEnter *.c call s:SetVariables('h', 'reg:/src/include/,reg:|src|include/**|,../include')
-    au BufEnter,BufWinEnter *.cpp call s:SetVariables('h', 'reg:/src/include/,reg:|src|include/**|,../include')
+    au BufEnter *.h call s:SetVariables('cpp,c', 'reg:/include/src/,reg:/include.*/src/,ifrel:|/include/|../src|')
+    au BufEnter *.c,*.cpp call s:SetVariables('h', 'reg:/src/include/,reg:|src|include/**|,ifrel:|/src/|../include|')
 augroup END
 
 "
