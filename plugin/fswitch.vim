@@ -20,7 +20,7 @@ if exists("g:disable_fswitch")
 endif
 
 " Version
-let s:fswitch_version = '0.9.1'
+let s:fswitch_version = '0.9.2'
 
 " Get the path separator right
 let s:os_slash = &ssl == 0 && (has("win16") || has("win32") || has("win64")) ? '\' : '/'
@@ -283,11 +283,11 @@ augroup END
 "
 com! FSHere       :call FSwitch('%', '')
 com! FSRight      :call FSwitch('%', 'wincmd l')
-com! FSSplitRight :call FSwitch('%', 'vsplit \| wincmd l')
+com! FSSplitRight :call FSwitch('%', 'vsplit | wincmd l')
 com! FSLeft       :call FSwitch('%', 'wincmd h')
-com! FSSplitLeft  :call FSwitch('%', 'vsplit \| wincmd h')
+com! FSSplitLeft  :call FSwitch('%', 'vsplit | wincmd h')
 com! FSAbove      :call FSwitch('%', 'wincmd k')
-com! FSSplitAbove :call FSwitch('%', 'split \| wincmd k')
+com! FSSplitAbove :call FSwitch('%', 'split | wincmd k')
 com! FSBelow      :call FSwitch('%', 'wincmd j')
-com! FSSplitBelow :call FSwitch('%', 'split \| wincmd j')
+com! FSSplitBelow :call FSwitch('%', 'split | wincmd j')
 
